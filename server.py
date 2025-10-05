@@ -97,62 +97,61 @@ async def collect_reports(start_month: str, end_month: str, output_file: str = N
 @mcp.tool()
 async def browser_login(use_persistent: bool = True, timeout: int = 300) -> str:
     """
-    启动浏览器进行登录（后台执行，不阻塞）
-
-    ✅ 新版本改进：
-    - 立即返回，不再阻塞等待
-    - 在后台线程中启动浏览器
-    - 用户可以使用 check_login_status 检查登录是否完成
+    启动浏览器进行登录
 
     ✅ 推荐使用流程：
-    1. 调用此工具启动浏览器（立即返回）
+    1. 调用此工具启动浏览器
     2. 在浏览器中完成 Google 登录（约1分钟）
-    3. 调用 check_login_status 检查登录状态
-    4. 登录成功后，调用 collect_reports 采集数据
+    3. 登录成功后，调用 collect_reports 采集数据
 
     工作流程：
-    1. 立即返回"浏览器启动中..."
-    2. 后台打开浏览器窗口
-    3. 等待您完成 Google OAuth 登录
-    4. 自动提取并保存 Cookie
-    5. 保存浏览器会话
+    1. 打开浏览器窗口
+    2. 等待您完成 Google OAuth 登录
+    3. 自动提取并保存 Cookie
+    4. 保存浏览器会话
 
     Args:
         use_persistent: 是否使用持久化浏览器上下文（推荐，默认 True）
         timeout: 登录超时时间（秒），默认 300 秒（5 分钟）
 
     Returns:
-        启动状态（立即返回，不等待登录完成）
+        登录结果
     """
-    import asyncio
+    try:
+        logger.info("=" * 60)
+        logger.info("browser_login 工具被调用")
+        logger.info(f"use_persistent: {use_persistent}, timeout: {timeout}")
+        logger.info("=" * 60)
 
-    async def background_login():
-        """后台执行登录"""
-        try:
-            login = BrowserLogin()
-            if use_persistent:
-                await login.launch_persistent_browser()
-            else:
-                await login.launch_browser_for_login(headless=False, timeout=timeout)
-        except Exception as e:
-            print(f"后台登录失败: {e}")
+        print(safe_text("🌐 正在启动浏览器登录..."))
 
-    # 在后台任务中启动登录（不等待完成）
-    asyncio.create_task(background_login())
+        login = BrowserLogin()
 
-    return safe_text(
-        "🌐 浏览器自动登录已启动\n\n"
-        "📍 当前状态：\n"
-        "  ✓ 后台任务已创建\n"
-        "  ✓ Playwright 浏览器正在启动中...\n"
-        "  ⏳ 预计 3-5 秒后浏览器窗口会打开\n\n"
-        "💡 您需要做的：\n"
-        "  1. 注意浏览器窗口弹出（可能在后台）\n"
-        "  2. 在浏览器中完成 Google 登录\n"
-        "  3. 登录成功后，告诉我「登录完成」或「好了」\n\n"
-        "⏱️  预计总时间：1-2 分钟\n"
-        "🔒 登录信息会安全保存，下次使用无需重复登录"
-    )
+        if use_persistent:
+            logger.info("使用持久化浏览器上下文")
+            success = await login.launch_persistent_browser()
+        else:
+            logger.info("使用临时浏览器上下文")
+            success = await login.launch_browser_for_login(headless=False, timeout=timeout)
+
+        if success:
+            logger.info("✓ 浏览器登录成功")
+            return safe_text(
+                "✅ 登录成功！\n\n"
+                "Cookie 已保存，现在可以使用 collect_reports 采集数据了"
+            )
+        else:
+            logger.error("✗ 浏览器登录失败")
+            return safe_text(
+                "❌ 登录失败或超时\n\n"
+                "请检查：\n"
+                "1. 浏览器是否正常弹出\n"
+                "2. 是否完成了 Google 登录\n"
+                "3. 查看日志文件获取详细信息"
+            )
+    except Exception as e:
+        logger.exception("browser_login 执行出错:")
+        return safe_text(f"❌ 启动失败: {str(e)}\n\n请查看日志文件获取详细错误信息")
 
 
 @mcp.tool()
@@ -220,6 +219,77 @@ async def check_login_status() -> str:
             return safe_text("❌ 未找到保存的 Cookie，请先使用 save_cookies_from_browser 工具保存登录信息")
     except Exception as e:
         return safe_text(f"检查失败: {str(e)}")
+
+
+@mcp.tool()
+async def check_playwright_installation() -> str:
+    """
+    检查 Playwright 浏览器驱动安装状态
+
+    Returns:
+        安装状态信息
+    """
+    import subprocess
+    import sys
+
+    try:
+        logger.info("检查 Playwright 安装状态")
+
+        # 检查 Playwright 模块
+        try:
+            import playwright
+            playwright_version = playwright.__version__
+            logger.info(f"Playwright 模块已安装，版本: {playwright_version}")
+        except ImportError:
+            return safe_text(
+                "❌ Playwright 模块未安装\n\n"
+                "请运行以下命令安装：\n"
+                "pip install playwright\n"
+                "playwright install chromium"
+            )
+
+        # 检查浏览器驱动
+        result_text = safe_text(f"✓ Playwright 模块已安装 (v{playwright_version})\n\n")
+
+        # 尝试检查浏览器安装
+        try:
+            # 运行 playwright install --dry-run 检查浏览器状态
+            result = subprocess.run(
+                [sys.executable, "-m", "playwright", "install", "--dry-run", "chromium"],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+
+            logger.debug(f"playwright install --dry-run 输出: {result.stdout}")
+
+            if "is already installed" in result.stdout or "Skipping" in result.stdout:
+                result_text += safe_text("✓ Chromium 浏览器驱动已安装\n\n")
+                result_text += "系统状态：正常\n"
+                result_text += "\n如果浏览器仍无法弹出，请检查：\n"
+                result_text += "1. 防火墙/杀毒软件是否阻止\n"
+                result_text += "2. 查看详细日志文件"
+            else:
+                result_text += safe_text("⚠ Chromium 浏览器驱动可能未安装\n\n")
+                result_text += "请运行以下命令安装：\n"
+                result_text += "playwright install chromium\n\n"
+                result_text += "或在 Windows PowerShell 中：\n"
+                result_text += "python -m playwright install chromium"
+
+        except subprocess.TimeoutExpired:
+            logger.warning("playwright install 命令超时")
+            result_text += safe_text("⚠ 无法检查浏览器驱动状态（命令超时）\n\n")
+            result_text += "建议手动运行：playwright install chromium"
+        except Exception as e:
+            logger.error(f"检查浏览器驱动失败: {e}")
+            result_text += safe_text(f"⚠ 无法检查浏览器驱动: {str(e)}\n\n")
+            result_text += "建议手动运行：playwright install chromium"
+
+        return result_text
+
+    except Exception as e:
+        logger.exception("检查 Playwright 安装状态出错:")
+        return safe_text(f"❌ 检查失败: {str(e)}")
 
 
 @mcp.tool()
