@@ -4,6 +4,16 @@ const https = require('https');
 const fs = require('fs');
 const path = require('path');
 
+// 从 package.json 读取版本
+function getPackageVersion() {
+  try {
+    const packageJson = require('../package.json');
+    return 'v' + packageJson.version;
+  } catch (e) {
+    return 'v1.0.0'; // 默认版本
+  }
+}
+
 // 获取平台和架构信息
 function getPlatformInfo() {
   const platform = process.platform;
@@ -42,46 +52,78 @@ function getPlatformInfo() {
   return { platform: platformName, arch: archName };
 }
 
-// 获取最新 Release 版本
-function getLatestVersion() {
+// 获取最新 Release 版本（带重试）
+function getLatestVersion(retries = 3) {
   return new Promise((resolve, reject) => {
     const options = {
       hostname: 'api.github.com',
       path: '/repos/Xuzan9396/yst_mcp/releases/latest',
       method: 'GET',
+      timeout: 10000, // 10秒超时
       headers: {
         'User-Agent': 'yst-mcp-installer'
       }
     };
 
-    https.get(options, (res) => {
+    const req = https.get(options, (res) => {
       let data = '';
       res.on('data', (chunk) => data += chunk);
       res.on('end', () => {
         if (res.statusCode === 200) {
-          const release = JSON.parse(data);
-          resolve(release.tag_name);
+          try {
+            const release = JSON.parse(data);
+            resolve(release.tag_name);
+          } catch (e) {
+            reject(new Error(`解析版本信息失败: ${e.message}`));
+          }
         } else {
-          reject(new Error(`获取版本失败: ${res.statusCode}`));
+          reject(new Error(`获取版本失败: HTTP ${res.statusCode}`));
         }
       });
-    }).on('error', reject);
+    });
+
+    req.on('error', (err) => {
+      if (retries > 0) {
+        console.log(`⚠️  网络错误，正在重试... (剩余 ${retries} 次)`);
+        setTimeout(() => {
+          getLatestVersion(retries - 1).then(resolve).catch(reject);
+        }, 2000); // 等待2秒后重试
+      } else {
+        reject(err);
+      }
+    });
+
+    req.on('timeout', () => {
+      req.destroy();
+      if (retries > 0) {
+        console.log(`⚠️  请求超时，正在重试... (剩余 ${retries} 次)`);
+        setTimeout(() => {
+          getLatestVersion(retries - 1).then(resolve).catch(reject);
+        }, 2000);
+      } else {
+        reject(new Error('请求超时'));
+      }
+    });
   });
 }
 
-// 下载二进制文件
-function downloadBinary(url, dest) {
+// 下载二进制文件（带重试）
+function downloadBinary(url, dest, retries = 3) {
   return new Promise((resolve, reject) => {
     const file = fs.createWriteStream(dest);
 
-    https.get(url, (response) => {
+    const req = https.get(url, (response) => {
       if (response.statusCode === 302 || response.statusCode === 301) {
+        file.close();
+        fs.unlink(dest, () => {});
         // 处理重定向
-        return downloadBinary(response.headers.location, dest).then(resolve).catch(reject);
+        return downloadBinary(response.headers.location, dest, retries).then(resolve).catch(reject);
       }
 
       if (response.statusCode !== 200) {
-        reject(new Error(`下载失败: ${response.statusCode}`));
+        file.close();
+        fs.unlink(dest, () => {});
+        reject(new Error(`下载失败: HTTP ${response.statusCode}`));
         return;
       }
 
@@ -90,10 +132,38 @@ function downloadBinary(url, dest) {
         file.close();
         resolve();
       });
-    }).on('error', (err) => {
-      fs.unlink(dest, () => {});
-      reject(err);
     });
+
+    req.on('error', (err) => {
+      file.close();
+      fs.unlink(dest, () => {});
+
+      if (retries > 0) {
+        console.log(`⚠️  下载出错，正在重试... (剩余 ${retries} 次)`);
+        setTimeout(() => {
+          downloadBinary(url, dest, retries - 1).then(resolve).catch(reject);
+        }, 2000);
+      } else {
+        reject(err);
+      }
+    });
+
+    req.on('timeout', () => {
+      req.destroy();
+      file.close();
+      fs.unlink(dest, () => {});
+
+      if (retries > 0) {
+        console.log(`⚠️  下载超时，正在重试... (剩余 ${retries} 次)`);
+        setTimeout(() => {
+          downloadBinary(url, dest, retries - 1).then(resolve).catch(reject);
+        }, 2000);
+      } else {
+        reject(new Error('下载超时'));
+      }
+    });
+
+    req.setTimeout(60000); // 60秒下载超时
   });
 }
 
@@ -105,10 +175,17 @@ async function install() {
     const { platform, arch } = getPlatformInfo();
     console.log(`📦 检测到平台: ${platform} ${arch}`);
 
-    // 获取最新版本
-    console.log('🔍 获取最新版本...');
-    const version = await getLatestVersion();
-    console.log(`✅ 最新版本: ${version}`);
+    // 获取版本号（优先从 GitHub，失败则使用 package.json）
+    let version;
+    console.log('🔍 获取版本信息...');
+    try {
+      version = await getLatestVersion();
+      console.log(`✅ 最新版本: ${version}`);
+    } catch (err) {
+      console.log(`⚠️  无法从 GitHub 获取最新版本: ${err.message}`);
+      version = getPackageVersion();
+      console.log(`📌 使用 package.json 版本: ${version}`);
+    }
 
     // 构建下载 URL
     const binaryName = platform === 'windows' ? 'yst_mcp.exe' : 'yst_mcp';
@@ -124,6 +201,7 @@ async function install() {
 
     // 下载二进制文件
     console.log(`📥 下载中: ${url}`);
+    console.log(`   目标路径: ${destPath}`);
     await downloadBinary(url, destPath);
 
     // 设置执行权限 (Unix 系统)
@@ -131,24 +209,36 @@ async function install() {
       fs.chmodSync(destPath, 0o755);
     }
 
-    console.log('✅ yst-mcp 安装成功!');
+    console.log('\n✅ yst-mcp 安装成功!');
     console.log(`\n📍 安装路径: ${destPath}`);
-    console.log('\n使用方法:');
+
+    // 验证文件大小
+    const stats = fs.statSync(destPath);
+    const sizeMB = (stats.size / (1024 * 1024)).toFixed(2);
+    console.log(`📦 文件大小: ${sizeMB} MB`);
+
+    console.log('\n💡 使用方法:');
     console.log('  npx -y @xuzan/yst-mcp');
-    console.log('\nClaude Desktop 配置:');
+    console.log('\n🔧 Claude Desktop 配置:');
     console.log('  claude mcp add-json yst_mcp -s user \'{"type":"stdio","command":"npx","args":["-y","@xuzan/yst-mcp"],"env":{}}\'');
-    console.log('\n数据存储位置:');
+    console.log('\n💾 数据存储位置:');
     console.log('  ~/.yst_mcp/data/cookies.json          (登录凭证)');
     console.log('  ~/.yst_mcp/data/browser_profile/      (浏览器会话)');
     console.log('  ~/.yst_mcp/output/                    (日报输出)');
 
   } catch (error) {
-    console.error('❌ 安装失败:', error.message);
-    console.error('\n请尝试以下方案:');
-    console.error('1. 检查网络连接是否正常');
-    console.error('2. 检查是否能访问 GitHub');
-    console.error('3. 手动从 GitHub Releases 下载二进制文件');
-    console.error('   https://github.com/Xuzan9396/yst_mcp/releases/latest');
+    console.error('\n❌ 安装失败:', error.message);
+    console.error('\n💡 可能的原因:');
+    console.error('  1. 网络连接问题 - 检查是否能访问 GitHub');
+    console.error('  2. Release 尚未发布 - 等待 GitHub Actions 完成编译');
+    console.error('  3. 平台不支持 - 检查您的操作系统和架构');
+    console.error('\n🔧 手动安装步骤:');
+    console.error('  1. 访问 GitHub Releases:');
+    console.error('     https://github.com/Xuzan9396/yst_mcp/releases/latest');
+    console.error('  2. 下载对应平台的二进制文件');
+    console.error(`  3. 重命名为 ${platform === 'windows' ? 'yst_mcp.exe' : 'yst_mcp'}`);
+    console.error(`  4. 放置到目录: ${path.join(__dirname, '..', 'bin')}`);
+    console.error('  5. 设置执行权限 (macOS/Linux): chmod +x yst_mcp');
     process.exit(1);
   }
 }
