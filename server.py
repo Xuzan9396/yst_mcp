@@ -6,16 +6,30 @@ YST KPI Report Collector MCP Service
 import sys
 import platform
 import asyncio
+import os
 
-# Windows 兼容性：设置正确的事件循环策略
+# Windows 兼容性：强制使用 UTF-8 编码
 if platform.system() == 'Windows':
+    # 设置环境变量强制使用 UTF-8
+    os.environ['PYTHONUTF8'] = '1'
+
+    # 设置 stdout 和 stderr 为 UTF-8
+    import io
+    if hasattr(sys.stdout, 'reconfigure'):
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+    else:
+        # Python 3.6 兼容
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+
     # 在 Windows 上，stdio 需要使用 SelectorEventLoop
     if sys.version_info >= (3, 8):
         # Python 3.8+ 默认使用 ProactorEventLoop，需要改为 SelectorEventLoop
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 from fastmcp import FastMCP
-from report_collector import ReportCollector
+from report_collector import ReportCollector, safe_text
 from cookie_manager import CookieManager
 from browser_login import BrowserLogin
 from logger import logger
@@ -57,16 +71,16 @@ async def collect_reports(start_month: str, end_month: str, output_file: str = N
         # 检查登录状态
         if not collector.check_login_status():
             if auto_login:
-                print("❌ 未登录，正在启动浏览器...")
+                print(safe_text("❌ 未登录，正在启动浏览器..."))
                 # 启动浏览器登录
                 browser_login = BrowserLogin()
                 if await browser_login.launch_persistent_browser():
                     # 重新加载 Cookie
                     collector.load_saved_cookies()
                 else:
-                    return "❌ 登录失败或超时，请重试"
+                    return safe_text("❌ 登录失败或超时，请重试")
             else:
-                return (
+                return safe_text(
                     "❌ 未登录或 Cookie 已过期\n\n"
                     "请使用以下方法之一：\n"
                     "1. 调用 browser_login 工具启动浏览器登录\n"
@@ -126,7 +140,7 @@ async def browser_login(use_persistent: bool = True, timeout: int = 300) -> str:
     # 在后台任务中启动登录（不等待完成）
     asyncio.create_task(background_login())
 
-    return (
+    return safe_text(
         "🌐 浏览器自动登录已启动\n\n"
         "📍 当前状态：\n"
         "  ✓ 后台任务已创建\n"
@@ -165,13 +179,13 @@ async def save_cookies_from_browser(cookie_string: str) -> str:
         if collector.load_cookies_from_string(cookie_string):
             # 保存到文件
             if collector.save_current_cookies():
-                return "✓ Cookie 保存成功！现在可以使用 collect_reports 工具采集数据了"
+                return safe_text("✓ Cookie 保存成功！现在可以使用 collect_reports 工具采集数据了")
             else:
-                return "❌ Cookie 保存失败"
+                return safe_text("❌ Cookie 保存失败")
         else:
-            return "❌ Cookie 格式错误"
+            return safe_text("❌ Cookie 格式错误")
     except Exception as e:
-        return f"保存失败: {str(e)}"
+        return safe_text(f"保存失败: {str(e)}")
 
 
 @mcp.tool()
@@ -199,13 +213,13 @@ async def check_login_status() -> str:
 
             # 检查登录状态
             if collector.check_login_status():
-                return "✓ 已登录，Cookie 有效"
+                return safe_text("✓ 已登录，Cookie 有效")
             else:
-                return "❌ Cookie 已过期，请重新登录并保存 Cookie"
+                return safe_text("❌ Cookie 已过期，请重新登录并保存 Cookie")
         else:
-            return "❌ 未找到保存的 Cookie，请先使用 save_cookies_from_browser 工具保存登录信息"
+            return safe_text("❌ 未找到保存的 Cookie，请先使用 save_cookies_from_browser 工具保存登录信息")
     except Exception as e:
-        return f"检查失败: {str(e)}"
+        return safe_text(f"检查失败: {str(e)}")
 
 
 @mcp.tool()
@@ -220,11 +234,11 @@ async def clear_saved_cookies() -> str:
 
     try:
         if manager.clear_cookies():
-            return "✓ Cookie 已清除"
+            return safe_text("✓ Cookie 已清除")
         else:
-            return "❌ 清除失败"
+            return safe_text("❌ 清除失败")
     except Exception as e:
-        return f"清除失败: {str(e)}"
+        return safe_text(f"清除失败: {str(e)}")
 
 
 if __name__ == "__main__":

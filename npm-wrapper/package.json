@@ -1,6 +1,6 @@
 {
   "name": "@xuzan/yst-mcp",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "YST KPI Report Collector MCP Server - Automated daily report collection from KPI system",
   "main": "index.js",
   "bin": {

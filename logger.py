@@ -67,7 +67,13 @@ class DetailedLogger:
         file_handler.setLevel(logging.DEBUG)
 
         # 控制台处理器 - 只显示 INFO 及以上
-        console_handler = logging.StreamHandler(sys.stdout)
+        # Windows 兼容：确保使用 UTF-8 编码
+        import io
+        if platform.system() == 'Windows' and hasattr(sys.stdout, 'buffer'):
+            console_stream = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace', line_buffering=True)
+        else:
+            console_stream = sys.stdout
+        console_handler = logging.StreamHandler(console_stream)
         console_handler.setLevel(logging.INFO)
 
         # 格式化器

@@ -11,7 +11,32 @@ from typing import List, Dict
 import re
 import sys
 import os
+import platform
 from pathlib import Path
+
+# Windows 兼容：emoji 字符映射
+def safe_text(text: str) -> str:
+    """
+    Windows 兼容的安全输出
+    在 Windows 下，将 emoji 替换为文本符号
+    """
+    if platform.system() == 'Windows':
+        # 替换常用 emoji 为文本符号
+        replacements = {
+            '✓': '[OK]',
+            '✅': '[OK]',
+            '❌': '[X]',
+            '⚠': '[!]',
+            '⏳': '[...]',
+            '🌐': '[*]',
+            '📍': '[*]',
+            '💡': '[*]',
+            '⏱': '[*]',
+            '🔒': '[*]',
+        }
+        for emoji, replacement in replacements.items():
+            text = text.replace(emoji, replacement)
+    return text
 
 class ReportCollector:
     """日报采集器"""
@@ -252,7 +277,7 @@ class ReportCollector:
 
         # 检查登录状态
         if not self.check_login_status():
-            return (
+            return safe_text(
                 "❌ 未登录或登录已过期\n\n"
                 "请先使用以下步骤登录：\n"
                 "1. 使用 chrome_devtools_mcp 打开登录页面\n"
@@ -271,13 +296,13 @@ class ReportCollector:
             print(f"正在采集 {month} 月份日报...")
             reports = self.fetch_month_reports(month)
             all_reports[month] = reports
-            print(f"  ✓ 采集到 {len(reports)} 条日报")
+            print(safe_text(f"  ✓ 采集到 {len(reports)} 条日报"))
 
         # 生成 Markdown 文件
         self._generate_markdown(all_reports, output_file)
 
         total_count = sum(len(reports) for reports in all_reports.values())
-        return f"✓ 采集完成！共采集 {len(months)} 个月份，{total_count} 条日报，已保存到 {output_file}"
+        return safe_text(f"✓ 采集完成！共采集 {len(months)} 个月份，{total_count} 条日报，已保存到 {output_file}")
 
     def _generate_markdown(self, all_reports: Dict[str, List[Dict]], output_file: str):
         """
