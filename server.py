@@ -3,10 +3,22 @@ YST KPI Report Collector MCP Service
 使用 FastMCP 采集 KPI 系统日报数据
 集成浏览器自动化登录功能
 """
+import sys
+import platform
+import asyncio
+
+# Windows 兼容性：设置正确的事件循环策略
+if platform.system() == 'Windows':
+    # 在 Windows 上，stdio 需要使用 SelectorEventLoop
+    if sys.version_info >= (3, 8):
+        # Python 3.8+ 默认使用 ProactorEventLoop，需要改为 SelectorEventLoop
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
 from fastmcp import FastMCP
 from report_collector import ReportCollector
 from cookie_manager import CookieManager
 from browser_login import BrowserLogin
+from logger import logger
 
 # 创建 MCP 服务
 mcp = FastMCP("yst-mcp")
@@ -216,4 +228,21 @@ async def clear_saved_cookies() -> str:
 
 
 if __name__ == "__main__":
-    mcp.run()
+    try:
+        logger.info("=" * 60)
+        logger.info("YST MCP Server 启动")
+        logger.info(f"平台: {platform.system()} {platform.release()}")
+        logger.info(f"Python: {sys.version}")
+
+        if platform.system() == 'Windows':
+            logger.info("检测到 Windows 系统，已设置 SelectorEventLoop 策略")
+            # 记录当前事件循环策略
+            policy = asyncio.get_event_loop_policy()
+            logger.info(f"当前事件循环策略: {type(policy).__name__}")
+
+        logger.info("=" * 60)
+
+        mcp.run()
+    except Exception as e:
+        logger.exception("MCP 服务器启动失败:")
+        raise
