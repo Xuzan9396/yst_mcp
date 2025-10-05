@@ -4,11 +4,21 @@
 # 用于将 Python MCP 服务打包成独立可执行文件
 #
 
+from PyInstaller.utils.hooks import copy_metadata
+
+# 收集包元数据（解决 importlib.metadata.PackageNotFoundError）
+datas = []
+datas += copy_metadata('fastmcp')
+datas += copy_metadata('playwright')
+datas += copy_metadata('requests')
+datas += copy_metadata('beautifulsoup4')
+datas += copy_metadata('python-dateutil')
+
 a = Analysis(
     ['server.py'],
     pathex=[],
     binaries=[],
-    datas=[],
+    datas=datas,
     hiddenimports=[
         # FastMCP 相关
         'fastmcp',
