@@ -51,6 +51,7 @@ class ReportCollector:
             'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
             'Accept-Language': 'zh-CN,zh-TW;q=0.9,zh;q=0.8,en;q=0.7',
+            'Accept-Encoding': 'gzip, deflate, br',  # 明确指定接受的编码
             'DNT': '1',
         })
 
@@ -153,10 +154,15 @@ class ReportCollector:
         reports = []
 
         try:
-            response = self.session.get(url)
+            # 禁用自动解压缩，手动处理编码
+            response = self.session.get(url, stream=True)
             response.raise_for_status()
 
-            soup = BeautifulSoup(response.text, 'html.parser')
+            # 手动处理响应内容
+            response.raw.decode_content = True
+            content = response.content.decode('utf-8', errors='ignore')
+
+            soup = BeautifulSoup(content, 'html.parser')
             report_list = soup.select('#report_list li')
 
             for li in report_list:
