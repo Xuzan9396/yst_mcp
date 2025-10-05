@@ -1,0 +1,317 @@
+name: Release YST MCP
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  # macOS 编译任务（支持 arm64 和 amd64）
+  build-macos:
+    name: Build macOS
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        include:
+          # macOS arm64 (Apple Silicon)
+          - arch: arm64
+            name: yst_mcp_darwin_arm64
+          # macOS amd64 (Intel)
+          - arch: amd64
+            name: yst_mcp_darwin_amd64
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller
+          pip install -r requirements.txt || true
+
+          # 安装项目依赖
+          pip install fastmcp requests beautifulsoup4 python-dateutil playwright
+
+          # 安装 Playwright 浏览器
+          playwright install chromium
+
+      - name: Build with PyInstaller
+        env:
+          ARCH: ${{ matrix.arch }}
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/}
+          echo "Building for macOS $ARCH - Version: $VERSION"
+
+          # 根据架构选择 PyInstaller 目标
+          if [ "$ARCH" = "arm64" ]; then
+            pyinstaller --target-arch arm64 build.spec
+          else
+            pyinstaller --target-arch x86_64 build.spec
+          fi
+
+          # 重命名输出文件
+          mv dist/yst_mcp dist/${{ matrix.name }}
+
+          # 验证文件
+          ls -lh dist/${{ matrix.name }}
+          file dist/${{ matrix.name }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: dist/${{ matrix.name }}
+
+  # Linux 编译任务（amd64）
+  build-linux:
+    name: Build Linux
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            name: yst_mcp_linux_amd64
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libnss3 \
+            libnspr4 \
+            libatk1.0-0 \
+            libatk-bridge2.0-0 \
+            libcups2 \
+            libdrm2 \
+            libdbus-1-3 \
+            libxkbcommon0 \
+            libxcomposite1 \
+            libxdamage1 \
+            libxfixes3 \
+            libxrandr2 \
+            libgbm1 \
+            libpango-1.0-0 \
+            libcairo2 \
+            libasound2
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller
+          pip install -r requirements.txt || true
+
+          # 安装项目依赖
+          pip install fastmcp requests beautifulsoup4 python-dateutil playwright
+
+          # 安装 Playwright 浏览器
+          playwright install chromium
+
+      - name: Build with PyInstaller
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/}
+          echo "Building for Linux amd64 - Version: $VERSION"
+
+          pyinstaller build.spec
+
+          # 重命名输出文件
+          mv dist/yst_mcp dist/${{ matrix.name }}
+
+          # 验证文件
+          ls -lh dist/${{ matrix.name }}
+          file dist/${{ matrix.name }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: dist/${{ matrix.name }}
+
+  # Windows 编译任务（amd64 和 arm64）
+  build-windows:
+    name: Build Windows
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        include:
+          # Windows amd64
+          - arch: amd64
+            name: yst_mcp_windows_amd64.exe
+          # Windows arm64
+          - arch: arm64
+            name: yst_mcp_windows_arm64.exe
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller
+          pip install -r requirements.txt
+        continue-on-error: true
+
+      - name: Install project dependencies
+        run: |
+          pip install fastmcp requests beautifulsoup4 python-dateutil playwright
+          playwright install chromium
+
+      - name: Build with PyInstaller
+        env:
+          ARCH: ${{ matrix.arch }}
+        run: |
+          $VERSION = $env:GITHUB_REF -replace 'refs/tags/', ''
+          Write-Host "Building for Windows $env:ARCH - Version: $VERSION"
+
+          pyinstaller build.spec
+
+          # 重命名输出文件
+          Move-Item dist\yst_mcp.exe dist\${{ matrix.name }}
+
+          # 验证文件
+          Get-Item dist\${{ matrix.name }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: dist\${{ matrix.name }}
+
+  # 创建 GitHub Release
+  create-release:
+    name: Create Release
+    needs: [build-macos, build-linux, build-windows]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./artifacts
+
+      - name: Display structure
+        run: ls -R ./artifacts
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: ./artifacts/*/*
+          body: |
+            ## YST MCP - KPI 日报自动采集 MCP 服务器
+
+            ### 🚀 快速安装（推荐）
+
+            **使用 npx（无需 Python 环境）**:
+            ```bash
+            npx -y @xuzan/yst-mcp
+            ```
+
+            **配置到 Claude Desktop**:
+            ```bash
+            claude mcp add-json yst_mcp -s user '{"type":"stdio","command":"npx","args":["-y","@xuzan/yst-mcp"],"env":{}}'
+            ```
+
+            ### 📦 支持的平台
+
+            本次发布包含以下平台的二进制文件：
+
+            **macOS**:
+            - ✅ Apple Silicon (ARM64): `yst_mcp_darwin_arm64`
+            - ✅ Intel (AMD64): `yst_mcp_darwin_amd64`
+
+            **Linux**:
+            - ✅ x64 (AMD64): `yst_mcp_linux_amd64`
+
+            **Windows**:
+            - ✅ x64 (AMD64): `yst_mcp_windows_amd64.exe`
+            - ✅ ARM64: `yst_mcp_windows_arm64.exe`
+
+            ### 🔧 手动下载安装
+
+            **macOS (Apple Silicon)**:
+            ```bash
+            curl -L https://github.com/Xuzan9396/yst_mcp/releases/latest/download/yst_mcp_darwin_arm64 -o yst_mcp
+            chmod +x yst_mcp
+            mv yst_mcp /usr/local/bin/
+            ```
+
+            **macOS (Intel)**:
+            ```bash
+            curl -L https://github.com/Xuzan9396/yst_mcp/releases/latest/download/yst_mcp_darwin_amd64 -o yst_mcp
+            chmod +x yst_mcp
+            mv yst_mcp /usr/local/bin/
+            ```
+
+            **Linux (amd64)**:
+            ```bash
+            curl -L https://github.com/Xuzan9396/yst_mcp/releases/latest/download/yst_mcp_linux_amd64 -o yst_mcp
+            chmod +x yst_mcp
+            sudo mv yst_mcp /usr/local/bin/
+            ```
+
+            **Windows (amd64)**:
+            下载 `yst_mcp_windows_amd64.exe` 并放置到 PATH 环境变量目录中
+
+            ### ✨ 功能特性
+
+            - ✅ **自动登录**: 使用 Playwright 自动化浏览器登录
+            - ✅ **持久化会话**: 登录一次长期有效，会话保存在 `~/.yst_mcp/`
+            - ✅ **批量采集**: 支持一次性采集多个月份的日报数据
+            - ✅ **格式化输出**: 自动生成结构化 Markdown 报告
+            - ✅ **跨平台**: macOS / Linux / Windows 全平台支持
+
+            ### 📖 使用说明
+
+            在 Claude Desktop 中直接对话：
+            ```
+            使用 yst_mcp 采集 2025-07 到 2025-09 的日报
+            ```
+
+            首次使用会自动打开浏览器，完成 Google 登录后，系统会自动采集数据。
+
+            ### 💾 数据存储位置
+
+            ```
+            ~/.yst_mcp/
+            ├── data/
+            │   ├── cookies.json          # 登录凭证
+            │   └── browser_profile/      # 浏览器会话
+            └── output/
+                └── new.md                # 默认输出文件
+            ```
+
+            ### 📚 完整文档
+
+            查看 [README.md](https://github.com/Xuzan9396/yst_mcp/blob/main/README.md) 了解更多信息。
+
+            ### 🐛 问题反馈
+
+            如有问题，请在 [GitHub Issues](https://github.com/Xuzan9396/yst_mcp/issues) 中反馈。
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,54 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# 虚拟环境
+.venv/
+venv/
+ENV/
+env/
+
+# PyInstaller
+build/
+dist/
+*.spec.bak
+
+# 用户数据（不提交敏感信息）
+data/cookies.json
+data/browser_profile/
+data/*.md
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 日志
+*.log
+npm-debug.log*
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# npm
+node_modules/
+package-lock.json
+
+# 测试
+.pytest_cache/
+.coverage
+htmlcov/
+
+# UV lock (项目特定)
+# uv.lock - 保留此文件以便其他开发者使用

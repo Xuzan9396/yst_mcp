@@ -1,0 +1,34 @@
+# npm 发布时忽略的文件
+
+# 测试文件
+test/
+*.test.js
+
+# 文档
+docs/
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 日志
+*.log
+npm-debug.log*
+
+# 临时文件
+tmp/
+temp/
+
+# 已下载的二进制文件（安装时会自动下载）
+bin/yst_mcp
+bin/yst_mcp.exe
