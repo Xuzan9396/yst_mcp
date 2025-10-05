@@ -52,3 +52,6 @@ htmlcov/
 
 # UV lock (项目特定)
 # uv.lock - 保留此文件以便其他开发者使用
+# 本地测试生成的二进制文件
+npm-wrapper/bin/yst_mcp
+npm-wrapper/bin/yst_mcp.exe
