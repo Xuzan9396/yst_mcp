@@ -8,6 +8,12 @@ import platform
 import asyncio
 import os
 
+# 导入 Playwright 浏览器路径 hook（打包时需要）
+try:
+    import playwright_hook
+except ImportError:
+    pass  # 开发模式下可能不存在
+
 # Windows 兼容性：强制使用 UTF-8 编码
 if platform.system() == 'Windows':
     # 设置环境变量强制使用 UTF-8

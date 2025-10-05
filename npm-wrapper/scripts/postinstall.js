@@ -217,23 +217,22 @@ async function install() {
     const sizeMB = (stats.size / (1024 * 1024)).toFixed(2);
     console.log(`📦 文件大小: ${sizeMB} MB`);
 
-    console.log('\n✅ yst-mcp 二进制文件安装成功！');
+    console.log('\n✅ yst-mcp 安装成功！');
 
-    // Windows 额外提示
+    // 首次运行提示
+    console.log('\n💡 首次运行提示:');
+    console.log('   - 首次使用会自动下载 Chromium 浏览器（约 300MB）');
+    console.log('   - 下载过程可能需要 1-3 分钟，请耐心等待');
+    console.log('   - 后续使用无需重复下载');
+    console.log('   - 无需安装 Python 或 Playwright，开箱即用！');
+
+    console.log('\n📂 浏览器存储位置:');
     if (platform === 'windows') {
-      console.log('\n⚠️  Windows 用户重要提示:');
-      console.log('   首次使用需要安装 Playwright 浏览器驱动！');
-      console.log('   请在 PowerShell 中运行以下命令:');
-      console.log('');
-      console.log('   python -m pip install playwright');
-      console.log('   python -m playwright install chromium');
-      console.log('');
-      console.log('   如果没有 Python，请先安装 Python 3.10+');
-      console.log('   下载地址: https://www.python.org/downloads/');
+      console.log('   Windows: %USERPROFILE%\\.yst_mcp\\playwright_browsers\\');
+    } else if (platform === 'darwin') {
+      console.log('   macOS: ~/Library/Caches/yst_mcp_playwright/');
     } else {
-      console.log('\n💡 首次使用提示:');
-      console.log('   如果浏览器无法弹出，请安装 Playwright 浏览器驱动:');
-      console.log('   pip install playwright && playwright install chromium');
+      console.log('   Linux: ~/.cache/yst_mcp_playwright/');
     }
 
     console.log('\n💡 使用方法:');

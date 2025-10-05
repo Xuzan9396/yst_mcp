@@ -5,6 +5,9 @@
 #
 
 from PyInstaller.utils.hooks import copy_metadata
+import os
+import sys
+from pathlib import Path
 
 # 收集包元数据（解决 importlib.metadata.PackageNotFoundError）
 datas = []
@@ -14,12 +17,40 @@ datas += copy_metadata('requests')
 datas += copy_metadata('beautifulsoup4')
 datas += copy_metadata('python-dateutil')
 
+# 打包 Playwright Driver（用于首次运行时下载浏览器）
+def get_playwright_driver():
+    """获取 Playwright driver 文件"""
+    try:
+        from playwright._impl._driver import compute_driver_executable
+
+        driver_executable = compute_driver_executable()
+        driver_path = Path(driver_executable)
+
+        if driver_path.exists():
+            print(f"找到 Playwright Driver: {driver_path}")
+            # 打包整个 driver 目录
+            driver_dir = driver_path.parent
+            return [(str(driver_dir), 'playwright/driver')]
+        else:
+            print(f"⚠️  警告: 未找到 Playwright Driver")
+            return []
+    except Exception as e:
+        print(f"⚠️  警告: 无法获取 Playwright Driver: {e}")
+        return []
+
+# 添加 Playwright Driver
+playwright_driver = get_playwright_driver()
+for src, dst in playwright_driver:
+    datas.append((src, dst))
+
 a = Analysis(
     ['server.py'],
     pathex=[],
     binaries=[],
     datas=datas,
     hiddenimports=[
+        # Playwright 浏览器 hook
+        'playwright_hook',
         # FastMCP 相关
         'fastmcp',
         'fastmcp.server',
